@@ -190,6 +190,10 @@ def main():
         )
     )
     training_args, dataset_args, collaboration_args, averager_args, tracker_args = parser.parse_args_into_dataclasses()
+    if torch.cuda.is_available():
+        training_args.fp16 = True
+        training_args.fp16_full_eval = True
+
     logger.info(f"Found {len(collaboration_args.initial_peers)} initial peers: {collaboration_args.initial_peers}")
 
     setup_transformers_logging(training_args.local_rank)
@@ -263,26 +267,34 @@ def main():
         opt, num_warmup_steps=training_args.warmup_steps, num_training_steps=training_args.total_steps
     )
 
-    optimizer = Optimizer(
-        dht=dht,
-        run_id=collaboration_args.run_id,
-        target_batch_size=adjusted_target_batch_size,
-        batch_size_per_step=total_batch_size_per_step,
-        optimizer=opt,
-        params=params,
-        scheduler=scheduler,
-        matchmaking_time=collaboration_args.matchmaking_time,
-        averaging_timeout=collaboration_args.averaging_timeout,
-        offload_optimizer=True,
-        delay_optimizer_step=True,
-        delay_grad_averaging=True,
-        client_mode=collaboration_args.client_mode,
-        grad_compression=Float16Compression(),
-        state_averaging_compression=Float16Compression(),
-        averager_opts={"bandwidth": collaboration_args.bandwidth, **asdict(averager_args)},
-        tracker_opts=asdict(tracker_args),
-        verbose=True,
-    )
+    if training_args.fp16:
+        optimizer = Optimizer(
+            dht=dht,
+            run_id=collaboration_args.run_id,
+            target_batch_size=adjusted_target_batch_size,
+            batch_size_per_step=total_batch_size_per_step,
+            optimizer=opt,
+            params=params,
+            scheduler=scheduler,
+            matchmaking_time=collaboration_args.matchmaking_time,
+            averaging_timeout=collaboration_args.averaging_timeout,
+            offload_optimizer=True,
+            delay_optimizer_step=True,
+            delay_grad_averaging=True,
+            client_mode=collaboration_args.client_mode,
+            grad_compression=Float16Compression(),
+            state_averaging_compression=Float16Compression(),
+            averager_opts={"bandwidth": collaboration_args.bandwidth, **asdict(averager_args)},
+            tracker_opts=asdict(tracker_args),
+            verbose=True,
+        )
+    else:
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=training_args.learning_rate,
+            eps=training_args.adam_epsilon,
+            weight_decay=training_args.weight_decay,
+        )
 
     class TrainerWithIndependentShuffling(Trainer):
         def get_train_dataloader(self) -> DataLoader:
