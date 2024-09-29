@@ -267,34 +267,26 @@ def main():
         opt, num_warmup_steps=training_args.warmup_steps, num_training_steps=training_args.total_steps
     )
 
-    if training_args.fp16:
-        optimizer = Optimizer(
-            dht=dht,
-            run_id=collaboration_args.run_id,
-            target_batch_size=adjusted_target_batch_size,
-            batch_size_per_step=total_batch_size_per_step,
-            optimizer=opt,
-            params=params,
-            scheduler=scheduler,
-            matchmaking_time=collaboration_args.matchmaking_time,
-            averaging_timeout=collaboration_args.averaging_timeout,
-            offload_optimizer=True,
-            delay_optimizer_step=True,
-            delay_grad_averaging=True,
-            client_mode=collaboration_args.client_mode,
-            grad_compression=Float16Compression(),
-            state_averaging_compression=Float16Compression(),
-            averager_opts={"bandwidth": collaboration_args.bandwidth, **asdict(averager_args)},
-            tracker_opts=asdict(tracker_args),
-            verbose=True,
-        )
-    else:
-        optimizer = torch.optim.Adam(
-            model.parameters(),
-            lr=training_args.learning_rate,
-            eps=training_args.adam_epsilon,
-            weight_decay=training_args.weight_decay,
-        )
+    optimizer = Optimizer(
+        dht=dht,
+        run_id=collaboration_args.run_id,
+        target_batch_size=adjusted_target_batch_size,
+        batch_size_per_step=total_batch_size_per_step,
+        optimizer=opt,
+        params=params,
+        scheduler=scheduler,
+        matchmaking_time=collaboration_args.matchmaking_time,
+        averaging_timeout=collaboration_args.averaging_timeout,
+        offload_optimizer=True,
+        delay_optimizer_step=True,
+        delay_grad_averaging=True,
+        client_mode=collaboration_args.client_mode,
+        grad_compression=Float16Compression() if training_args.fp16 else None,
+        state_averaging_compression=Float16Compression() if training_args.fp16 else None,
+        averager_opts={"bandwidth": collaboration_args.bandwidth, **asdict(averager_args)},
+        tracker_opts=asdict(tracker_args),
+        verbose=True,
+    )
 
     class TrainerWithIndependentShuffling(Trainer):
         def get_train_dataloader(self) -> DataLoader:
